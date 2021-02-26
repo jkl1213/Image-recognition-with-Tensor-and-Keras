@@ -1,0 +1,144 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import PIL
+import tensorflow as tf
+
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.models import Sequential
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Activation,Dense,Flatten,BatchNormalization,Conv2D,MaxPool2D
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.metrics import categorical_crossentropy
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.metrics import confusion_matrix
+import itertools
+import os
+import shutil
+import random
+import glob
+import matplotlib.pyplot as plt
+import warnings
+
+#Provide the paths to the training data and validation data to train the model
+
+Remark: train folder contains say subfolder a and b containing type a data and type b data respectively; the same goes for validation folder
+
+from keras.models import Model
+from keras.layers import Dense,Flatten
+from keras.applications import vgg16
+from keras import backend as K
+train_path = 'Desktop/Keras/ImagesV5/train'
+valid_path = 'Desktop/Keras/ImagesV5/valid'
+test_path = 'Desktop/Keras/ImagesV5/test'
+
+#get the actual images in jpg or png from training folder
+#set color_mode to grayscale 
+#set image size to be smaller at 180,180
+directory = 'Desktop/Keras/imagesV5/train'
+train_ds= tf.keras.preprocessing.image_dataset_from_directory(
+    directory, labels='inferred', label_mode='categorical',
+    class_names=None, color_mode='grayscale', batch_size=10, image_size=(180,180), shuffle=True, seed=None, validation_split=False, subset=None,
+    interpolation='bilinear', follow_links=False
+)
+
+#get the actual images from validation folder
+directory = 'Desktop/Keras/imagesV5/valid'
+valid_ds= tf.keras.preprocessing.image_dataset_from_directory(
+    directory, labels='inferred', label_mode='categorical',
+    class_names=None, color_mode='grayscale', batch_size=10, image_size=(180,180), shuffle=True, seed=None, validation_split=False, subset=None,
+    interpolation='bilinear', follow_links=False
+)
+
+#show the class names from the training folder
+class_names = train_ds.class_names
+class_names
+
+
+#plot the images
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 10))
+for images, labels in train_ds.take(1):
+    
+    for i in range(9):
+        print(labels[i])
+        ax = plt.subplot(3, 3, i + 1)
+        plt.imshow(images[i].numpy().astype("uint8").squeeze())
+        plt.axis("off")
+#purposes unclear, code used in the google tensorflow tutorial for optimisation of CPU/GPU
+AUTOTUNE = tf.data.experimental.AUTOTUNE
+
+train_ds = train_ds.cache().shuffle(100).prefetch(buffer_size=AUTOTUNE)
+valid_ds = valid_ds.cache().prefetch(buffer_size=AUTOTUNE)
+
+#data augmentation - distorting the images randomly to generate new data from existing training data
+data_augmentation = keras.Sequential(
+  [
+    layers.experimental.preprocessing.RandomFlip("horizontal", 
+                                                 input_shape=(180, 
+                                                              180,
+                                                              1)),
+    layers.experimental.preprocessing.RandomRotation(0.01),
+    layers.experimental.preprocessing.RandomZoom(0.001),
+  ]
+)
+
+#show the data after random distortion
+plt.figure(figsize=(10, 10))
+for images, _ in train_ds.take(1):
+  for i in range(9):
+    augmented_images = data_augmentation(images)
+    ax = plt.subplot(3, 3, i + 1)
+    plt.imshow(augmented_images[0].numpy().astype("uint8").squeeze())
+    plt.axis("off")
+    
+#create a sequential model and set the parameters - for details check out https://www.tensorflow.org/tutorials/images/classification
+#the last layer must have unite=14 as we have 14 classes of data
+model = Sequential([data_augmentation,Conv2D(filters=32,kernel_size=(3,3),activation='relu',padding='same',input_shape=(180,180,1)),
+        MaxPool2D(pool_size=(2,2),strides=2),
+        Conv2D(filters=64,kernel_size=(3,3),activation='relu',padding='same'),
+        MaxPool2D(pool_size=(2,2),strides=2),
+                    layers.Dropout(0.2),
+                    Flatten(),
+                    Dense(units=14,activation='softmax'),])
+#note that the model has multiple layers and 18 million parameters to train
+model.summary()
+#must compile the model before fitting it to data
+model.compile(optimizer=Adam(learning_rate=0.0001),loss='categorical_crossentropy',metrics=['accuracy'])
+
+#epochs refer to the number of training sessions (backpropagation) to train the model, usually train it until accuracy no longer increases
+model.fit(x=train_ds,validation_data=valid_ds,epochs=3,verbose=2)
+
+#show a new data in grayscale which will be passed to model for prediction
+img = keras.preprocessing.image.load_img('Desktop/Keras/testV5/epic_guard-29.png'
+    ,color_mode="grayscale",target_size=(180, 180)
+    )
+img_array = keras.preprocessing.image.img_to_array(img)
+img_array = tf.expand_dims(img_array, 0) # Create a batch
+img
+#predicted label generated by model 
+def model_pred(img_array):
+    predictions = model.predict(x=img_array,verbose=0)
+    print("predicted: ",predictions[0])
+    #get the original list of probabilities
+    p = list(predictions[0])
+    lab = class_names
+    p_lab = dict(zip(p,lab))
+    p.sort()
+          
+    #get three largest probabilities
+    first, second ,third = p[-1],p[-2],p[-3]
+    top3 = [p_lab.get(first),p_lab.get(second),p_lab.get(third)]
+   
+    result = dict(zip(top3,[first, second ,third]))
+    
+    return result
+model_pred(img_array)
+#save model
+import os.path
+model.save('models/full_group_model_bw.h5')
